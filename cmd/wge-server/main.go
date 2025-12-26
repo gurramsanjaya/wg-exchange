@@ -33,13 +33,14 @@ func main() {
 		log.Fatalln("invalid toml conf file", err)
 	}
 
-	dbusclient.GetManager().SetDbusSystemdManager(*enableDbus)
-
-	if err := processor.InitProcessor(wgeConf); err != nil {
+	dbusclient.DefaultSystemdManager.SetDbusSystemdManager(*enableDbus)
+	store, err := processor.NewStore(wgeConf)
+	if err != nil {
 		log.Println("processor init failure...", err)
 		return
 	}
-	if err := server.InitServer(wgeConf.Server); err != nil {
+
+	if _, err := server.NewServer(wgeConf.Server, store); err != nil {
 		log.Println("server init failure...", err)
 		return
 	}

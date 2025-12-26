@@ -6,19 +6,18 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"sync"
 
 	"wg-exchange/cmd/wge-server/processor"
 	"wg-exchange/cmd/wge-server/terminator"
 	"wg-exchange/models"
 )
 
-var (
-	initErr error
-	once    sync.Once
-)
+type Server struct {
+	store  *processor.Store
+	server *http.Server
+}
 
-func addPeer(w http.ResponseWriter, r *http.Request) {
+func (s *Server) addPeer(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var creds models.Credentials
 	log.Println("[Request] addr:", r.RemoteAddr, ", user-agent:", r.UserAgent())
@@ -32,7 +31,7 @@ func addPeer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	if c, err := processor.AddKey(creds); err != nil {
+	if c, err := s.store.AddKey(creds); err != nil {
 		log.Println("addKey failure:", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -47,30 +46,35 @@ func addPeer(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func InitServer(s models.WGEServer) error {
-	once.Do(func() {
-		mux := http.NewServeMux()
-		mux.HandleFunc("/", addPeer)
+func (s *Server) StartServer(ctx context.Context, _ context.CancelFunc) {
+	go s.listen()
+	<-ctx.Done()
+	if err := s.server.Shutdown(ctx); err != nil {
+		log.Println("server shutdown failure")
+	}
+	log.Println("server shut down")
+}
 
-		server := &http.Server{
-			Addr:    s.ListenAddress.String(),
+func (s *Server) listen() {
+	if err := s.server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		log.Println("server failure...")
+	}
+}
+
+func NewServer(wgeServConf models.WGEServer, store *processor.Store) (serv *Server, err error) {
+	mux := http.NewServeMux()
+	serv = &Server{
+		store: store,
+		server: &http.Server{
+			Addr:    wgeServConf.ListenAddress.String(),
 			Handler: mux,
-		}
+		},
+	}
+	mux.HandleFunc("/", serv.addPeer)
 
-		shutdown := func(ctx context.Context, _ context.CancelFunc) {
-			<-ctx.Done()
-			if err := server.Shutdown(ctx); err != nil {
-				log.Println("server shutdown failure")
-			}
-			log.Println("server shut down")
-		}
-		terminator.HookInto(shutdown)
+	terminator.HookInto(serv.StartServer)
 
-		go func() {
-			if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-				log.Println("server failure...")
-			}
-		}()
-	})
-	return initErr
+	go func() {
+	}()
+	return serv, nil
 }

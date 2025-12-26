@@ -23,19 +23,13 @@ import (
 
 const (
 	wireguardPath = "/etc/wireguard/"
-	maxIncr       = (1 << 8) - 1
+	maxIPIncr     = (1 << 8) - 1 // just the last byte of the address
 	ipv6PeerMask  = 128
 	ipv4PeerMask  = 32
 )
 
 var (
-	initErr error
-	once    sync.Once
-
-	store *peerStore
-	proc  *processor
-
-	allDefaultAllowedIps = [...]string{"0.0.0.0/0", "::/0"}
+	DefaultAllowedIps = [...]string{"0.0.0.0/0", "::/0"}
 )
 
 type procEntry struct {
@@ -43,19 +37,20 @@ type procEntry struct {
 	ips   []string
 }
 
-// For quickly checking and dispatching back clientconf
-type peerStore struct {
+// For quickly checking and dispatching clientconf back in response
+type Store struct {
 	sync.Mutex
 	pubKeys []*ecdh.PublicKey
 
-	dns      []string
-	netIps   []netip.Prefix
-	pub      *ecdh.PublicKey
-	endpoint string
+	dns       []string
+	netIps    []netip.Prefix
+	pub       *ecdh.PublicKey
+	endpoint  string
+	processor *Processor
 }
 
 // For slower addition to the server conf
-type processor struct {
+type Processor struct {
 	ch             chan procEntry
 	intrfc         string
 	path           string
@@ -63,17 +58,7 @@ type processor struct {
 	systemdManager *dbusclient.SystemdManager
 }
 
-func init() {
-	store = &peerStore{
-		pubKeys: make([]*ecdh.PublicKey, 0, 20),
-		dns:     make([]string, 0, 2),
-		netIps:  make([]netip.Prefix, 0, 2),
-	}
-	proc = &processor{
-		ch: make(chan procEntry, 20),
-	}
-
-}
+/** --- Store --- */
 
 func cmp(a *ecdh.PublicKey, b *ecdh.PublicKey) int {
 	tmpA := a.Bytes()
@@ -88,12 +73,12 @@ func cmp(a *ecdh.PublicKey, b *ecdh.PublicKey) int {
 	return 0
 }
 
-func getNextIps(incr int) (clientAddress []string, serverPeerIps []string, err error) {
-	if incr > maxIncr {
+func (s *Store) getNextIps(incr int) (clientAddress []string, serverPeerIps []string, err error) {
+	if incr > maxIPIncr {
 		return nil, nil, errors.New("max peers reached")
 	}
 
-	for _, val := range store.netIps {
+	for _, val := range s.netIps {
 		tmp := val.Addr().AsSlice()
 
 		// increment
@@ -122,79 +107,9 @@ func getNextIps(incr int) (clientAddress []string, serverPeerIps []string, err e
 	return clientAddress, serverPeerIps, nil
 }
 
-func processEntry(entry procEntry) error {
-	peerConf := &models.Config{
-		Peer: []models.Peer{
-			{
-				Ips:         entry.ips,
-				Credentials: entry.creds,
-			},
-		},
-	}
-	if buf, err := peerConf.MarshalText(); err != nil {
-		return err
-	} else {
-		f, err := os.OpenFile(proc.path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o640)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		if _, err := f.Write(buf); err != nil {
-			return err
-		}
-	}
-	return nil
-
-}
-
-func process(ctx context.Context, cancel context.CancelFunc) {
-	tick := time.NewTicker(1 * time.Second)
-	defer tick.Stop()
-	if ok, err := proc.fLock.TryLock(); err != nil || !ok {
-		// manually trigger cancel
-		log.Println("couldn't acquire file lock, stopping...")
-		cancel()
-		return
-	}
-	defer proc.fLock.Unlock()
-
-	unRefreshed := 0
-	prevTime := time.Now()
-
-	for range tick.C {
-		select {
-		case <-ctx.Done():
-			// cleanup
-			if unRefreshed > 0 {
-				if err := proc.systemdManager.RestartService(proc.intrfc); err != nil {
-					log.Println("failure restarting service...", err)
-				}
-			}
-			return
-		case entry := <-proc.ch:
-			if err := processEntry(entry); err != nil {
-				log.Println("failure to add entry...", err)
-				cancel()
-			}
-			unRefreshed += 1
-		default:
-		}
-
-		if unRefreshed > 0 && time.Since(prevTime) > time.Minute {
-			if err := proc.systemdManager.RestartService(proc.intrfc); err != nil {
-				log.Println("failure restarting service...", err)
-				cancel()
-			}
-			prevTime = time.Now()
-			unRefreshed = 0
-		}
-	}
-
-}
-
-func AddKey(creds models.Credentials) (*models.ClientConfig, error) {
-	store.Lock()
-	defer store.Unlock()
+func (s *Store) AddKey(creds models.Credentials) (*models.ClientConfig, error) {
+	s.Lock()
+	defer s.Unlock()
 
 	// Verify keys
 	// psk
@@ -210,12 +125,12 @@ func AddKey(creds models.Credentials) (*models.ClientConfig, error) {
 	}
 
 	// check if its previously sent
-	if _, ok := slices.BinarySearchFunc(store.pubKeys, pub, cmp); ok {
+	if _, ok := slices.BinarySearchFunc(s.pubKeys, pub, cmp); ok {
 		return nil, errors.New("rejected")
 	}
 
 	// Assign ips, incr = 1(server ip) + previous peers
-	cIps, sIps, err := getNextIps(len(store.pubKeys) + 1)
+	cIps, sIps, err := s.getNextIps(len(s.pubKeys) + 1)
 	if err != nil {
 		return nil, err
 	}
@@ -223,14 +138,14 @@ func AddKey(creds models.Credentials) (*models.ClientConfig, error) {
 	// conf to send to client
 	c := &models.ClientConfig{
 		Intrfc: models.Interface{
-			Dns:     store.dns,
+			Dns:     s.dns,
 			Address: cIps,
 		},
 		Config: models.Config{
 			Peer: []models.Peer{
 				{
-					Endpoint:    store.endpoint,
-					Ips:         allDefaultAllowedIps[:],
+					Endpoint:    s.endpoint,
+					Ips:         DefaultAllowedIps[:],
 					Credentials: creds,
 				},
 			},
@@ -243,124 +158,197 @@ func AddKey(creds models.Credentials) (*models.ClientConfig, error) {
 	}
 
 	select {
-	case proc.ch <- p:
+	case s.processor.ch <- p:
 	default:
 		return nil, errors.New("buffer full")
 	}
 
-	store.pubKeys = append(store.pubKeys, pub)
-	slices.SortFunc(store.pubKeys, cmp)
+	s.pubKeys = append(s.pubKeys, pub)
+	slices.SortFunc(s.pubKeys, cmp)
 
 	return c, nil
 }
 
-func InitProcessor(s models.WGEServerConf) error {
-	once.Do(func() {
-		if s.Server.IntrfcName == "" {
-			initErr = errors.New("invalid device name")
-			return
-		}
-		proc.intrfc = s.Server.IntrfcName
-		proc.path = path.Join(wireguardPath, fmt.Sprintf("%s.conf", proc.intrfc))
-		log.Println("path:", proc.path)
+func NewStore(servConf models.WGEServerConf) (store *Store, err error) {
 
-		// file lock
-		proc.fLock = flock.New(path.Join(os.TempDir(), fmt.Sprintf(".wge-%s", proc.intrfc)))
-		if l, err := proc.fLock.TryLock(); err != nil {
-			initErr = err
-			return
-		} else if !l {
-			initErr = errors.New("another instance is currently running")
-			return
-		}
-		defer proc.fLock.Unlock()
+	store = &Store{
+		pubKeys: make([]*ecdh.PublicKey, 0, 20),
+		dns:     make([]string, 0, 2),
+		netIps:  make([]netip.Prefix, 0, 2),
+		processor: &Processor{
+			ch:             make(chan procEntry, 20),
+			systemdManager: dbusclient.DefaultSystemdManager,
+		},
+	}
 
-		// set endpoint
-		if !s.Server.WireguardEndpoint.IsValid() {
-			initErr = errors.New("invalid wireguard endpoint")
-			return
-		}
-		store.endpoint = s.Server.WireguardEndpoint.String()
+	proc := store.processor
 
-		// set dns
-		if len(s.Server.WireguardDns) == 0 {
-			initErr = errors.New("dns is null")
-			return
-		}
-		for _, val := range s.Server.WireguardDns {
-			if !val.IsValid() {
-				initErr = errors.New("invalid dns")
-				return
-			}
-			store.dns = append(store.dns, val.String())
-		}
+	if servConf.Server.IntrfcName == "" {
+		return nil, errors.New("invalid device name")
+	}
+	proc.intrfc = servConf.Server.IntrfcName
+	proc.path = path.Join(wireguardPath, fmt.Sprintf("%s.conf", proc.intrfc))
+	log.Println("path:", proc.path)
 
-		// set interface ips
-		if len(s.WgInterface.Address) == 0 {
-			initErr = errors.New("device ips is null")
-			return
-		}
-		for _, val := range s.WgInterface.Address {
-			if tmp, err := netip.ParsePrefix(val); err != nil || !tmp.IsValid() {
-				initErr = errors.New("device ips invalid")
-			} else {
-				store.netIps = append(store.netIps, tmp)
-			}
-		}
+	// file lock
+	proc.fLock = flock.New(path.Join(os.TempDir(), fmt.Sprintf(".wge-%s", proc.intrfc)))
+	if l, err := proc.fLock.TryLock(); err != nil {
+		return nil, err
+	} else if !l {
+		return nil, errors.New("another instance is currently running")
+	}
+	defer proc.fLock.Unlock()
 
-		// private key generation
-		var privTemp *ecdh.PrivateKey
-		var err error
-		if privTemp, err = ecdh.X25519().GenerateKey(rand.Reader); err != nil {
-			initErr = err
-			return
-		}
-		store.pub = privTemp.PublicKey()
+	// set endpoint
+	if !servConf.Server.WireguardEndpoint.IsValid() {
+		return nil, errors.New("invalid wireguard endpoint")
+	}
+	store.endpoint = servConf.Server.WireguardEndpoint.String()
 
-		// set private to conf
-		s.WgInterface.Priv = privTemp.Bytes()
-
-		// write server conf to file
-		tmp := models.ServerConfig{
-			Intrfc: s.WgInterface,
+	// set dns
+	if len(servConf.Server.WireguardDns) == 0 {
+		return nil, errors.New("dns is null")
+	}
+	for _, val := range servConf.Server.WireguardDns {
+		if !val.IsValid() {
+			return nil, errors.New("invalid dns")
 		}
-		tmp.Intrfc.ListenPort = int32(s.Server.WireguardEndpoint.Port())
-		if buf, err := tmp.MarshalText(); err != nil {
-			initErr = err
-			return
+		store.dns = append(store.dns, val.String())
+	}
+
+	// set interface ips
+	if len(servConf.WgInterface.Address) == 0 {
+		return nil, errors.New("device ips is null")
+	}
+	for _, val := range servConf.WgInterface.Address {
+		if tmp, err := netip.ParsePrefix(val); err != nil || !tmp.IsValid() {
+			return nil, errors.New("device ips invalid")
 		} else {
-			f, err := os.OpenFile(proc.path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o640)
-			if err != nil {
-				initErr = err
-				return
-			}
-			defer f.Close()
-
-			// check fstat once, just to be sure
-			if fstat, err := f.Stat(); err != nil {
-				initErr = err
-				return
-			} else if fstat.Mode()&0o640 == 0 {
-				// might happen if the file is already present but with different mode
-				initErr = errors.New("device file mode mismatch")
-				return
-			}
-
-			if _, err := f.Write(buf); err != nil {
-				initErr = err
-				return
-			}
+			store.netIps = append(store.netIps, tmp)
 		}
+	}
 
-		// try enabling the service
-		proc.systemdManager = dbusclient.GetManager()
-		if err := proc.systemdManager.EnableAndStartService(proc.intrfc); err != nil {
-			initErr = err
+	// private key generation
+	var privTemp *ecdh.PrivateKey
+	if privTemp, err = ecdh.X25519().GenerateKey(rand.Reader); err != nil {
+		return
+	}
+	store.pub = privTemp.PublicKey()
+
+	// set private to conf
+	servConf.WgInterface.Priv = privTemp.Bytes()
+
+	// write server conf to file
+	tmp := models.ServerConfig{
+		Intrfc: servConf.WgInterface,
+	}
+	tmp.Intrfc.ListenPort = int32(servConf.Server.WireguardEndpoint.Port())
+	buf, err := tmp.MarshalText()
+	if err != nil {
+		return nil, err
+	}
+
+	f, err := os.OpenFile(proc.path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o640)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	// check fstat once, just to be sure
+	if fstat, err := f.Stat(); err != nil {
+		return nil, err
+	} else if fstat.Mode()&0o640 == 0 {
+		// might happen if the file is already present but with different mode
+		return nil, errors.New("device file mode mismatch")
+	}
+
+	if _, err := fmt.Fprint(f, string(buf)); err != nil {
+		return nil, err
+	}
+
+	terminator.HookInto(store.processor.RunProcessor)
+	return store, nil
+}
+
+/** --- Processor --- */
+
+func (p *Processor) processEntry(entry procEntry) error {
+	peerConf := &models.Config{
+		Peer: []models.Peer{
+			{
+				Ips:         entry.ips,
+				Credentials: entry.creds,
+			},
+		},
+	}
+	if buf, err := peerConf.MarshalText(); err != nil {
+		return err
+	} else {
+		f, err := os.OpenFile(p.path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o640)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if _, err := f.Write(buf); err != nil {
+			return err
+		}
+	}
+	return nil
+
+}
+
+func (p *Processor) RunProcessor(ctx context.Context, cancel context.CancelFunc) {
+	tick := time.NewTicker(1 * time.Second)
+	defer tick.Stop()
+
+	if ok, err := p.fLock.TryLock(); err != nil || !ok {
+		// manually trigger cancel
+		log.Println("couldn't acquire file lock, stopping...")
+		cancel()
+		return
+	}
+	defer p.fLock.Unlock()
+
+	// try enabling the service
+	if err := p.systemdManager.EnableAndStartService(p.intrfc); err != nil {
+		log.Println("failure enabling service", err)
+		cancel()
+		return
+	}
+
+	unRefreshed := 0
+	prevTime := time.Now()
+
+	for range tick.C {
+		select {
+		case <-ctx.Done():
+			// cleanup
+			if unRefreshed > 0 {
+				if err := p.systemdManager.RestartService(p.intrfc); err != nil {
+					log.Println("failure restarting service...", err)
+				}
+			}
 			return
+		case entry := <-p.ch:
+			if err := p.processEntry(entry); err != nil {
+				log.Println("failure to add entry...", err)
+				// disable server and stop service on error
+				if err := p.systemdManager.DisableAndStopService(p.intrfc); err != nil {
+					log.Println("failure disabling service", err)
+				}
+				cancel()
+			}
+			unRefreshed += 1
+		default:
 		}
 
-		terminator.HookInto(process)
-
-	})
-	return initErr
+		if unRefreshed > 0 && time.Since(prevTime) > time.Minute {
+			if err := p.systemdManager.RestartService(p.intrfc); err != nil {
+				log.Println("failure restarting service...", err)
+				cancel()
+			}
+			prevTime = time.Now()
+			unRefreshed = 0
+		}
+	}
 }
