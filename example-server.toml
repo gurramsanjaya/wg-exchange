@@ -1,0 +1,21 @@
+
+[Server]
+Ttl = 500
+ExchangeListenAddress = "127.0.0.1:7777"
+WireguardEndpoint = "127.0.0.1:51820"
+WireguardDns = ["192.168.1.1"] # This is going to be sent set to the client
+InterfaceName = "servertest"
+# TlsCertPath = "certPath" # currently unused
+# TlsKeyPath = "keyPath" # currently unused
+
+# This is same as wg, wg-quick notation, except in toml format, so array string in '[]' or the other toml variations
+[Interface]
+Address = ["192.168.1.1/24", "fe80:1::1/120"]
+# These can be skipped if needed, only Address is required
+FwMark = 0xaaaa
+DNS = ["8.8.8.8"]
+PreUp = ["echo something"]
+PostUp = ["echo something else"]
+PreDown = ["echo cleanup or something", "echo multiple cleanups for some reason"]
+PostDown = ["echo its over"]
+# Priv is overwritten

@@ -61,7 +61,8 @@ func (c *clientProcessor) createClient(intrfcNm string) error {
 	go c.encode(w, &val)
 
 	if resp, err := http.DefaultClient.Post(c.uri, "application/octet-stream", r); err != nil {
-		log.Fatalln("failure")
+		log.Fatalln("http failure")
+		return err
 	} else {
 
 		defer resp.Body.Close()

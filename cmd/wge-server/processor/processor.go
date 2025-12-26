@@ -188,7 +188,7 @@ func NewStore(servConf models.WGEServerConf) (store *Store, err error) {
 	}
 	proc.intrfc = servConf.Server.IntrfcName
 	proc.path = path.Join(wireguardPath, fmt.Sprintf("%s.conf", proc.intrfc))
-	log.Println("path:", proc.path)
+	log.Println("server conf path:", proc.path)
 
 	// file lock
 	proc.fLock = flock.New(path.Join(os.TempDir(), fmt.Sprintf(".wge-%s", proc.intrfc)))

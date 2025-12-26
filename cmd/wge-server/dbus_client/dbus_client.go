@@ -91,7 +91,6 @@ func (d *SystemdManager) EnableAndStartService(intrfc string) error {
 		if call.Err != nil {
 			return call.Err
 		}
-		log.Println(len(call.Body))
 
 		if err := call.Store(&carriesInstallInfo, &changes); err != nil {
 			return err
@@ -133,7 +132,6 @@ func (d *SystemdManager) DisableAndStopService(intrfc string) error {
 		if call.Err != nil {
 			return call.Err
 		}
-		log.Println(len(call.Body))
 
 		if err := call.Store(&changes); err != nil {
 			return err
