@@ -1,5 +1,9 @@
 # wg-exchange
 
+[![dispatch build](https://github.com/gurramsanjaya/wg-exchange/actions/workflows/dispatch.yml/badge.svg?event=workflow_dispatch)](https://github.com/gurramsanjaya/wg-exchange/actions/workflows/dispatch.yml)
+![GitHub Release](https://img.shields.io/github/v/release/gurramsanjaya/wg-exchange)
+
+
 wg-exchange is a Go-based tool that manages key exchange for WireGuard VPNs. It simplifies the process of generating, exchanging, and managing keys to facilitate secure and seamless VPN setup.
 
 ## Features
