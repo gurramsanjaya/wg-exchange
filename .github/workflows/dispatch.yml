@@ -58,6 +58,4 @@ jobs:
           commit: master
           immutableCreate: true
           generateReleaseNotes: true
-          generateReleaseNotesPreviousTag: ${{ inputs.prev-version == '' && '' || join(['v',inputs.prev-version],'') }}
-          
-      
+          generateReleaseNotesPreviousTag: ${{ inputs.prev-version != '' && format('v{0}', inputs.prev-version) || '' }}
