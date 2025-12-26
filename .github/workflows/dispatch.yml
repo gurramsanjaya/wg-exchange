@@ -36,8 +36,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: wg-exchange-${{ matrix.os }}-${{ matrix.arch }}
-          compression-level: 9
-          path: build/
+          path: wg-exchange-${{ matrix.os }}-${{ matrix.arch }}.tar.zst
+          compression: 0
+          overwrite: true
   release:
     runs-on: ubuntu-latest
     needs: build
@@ -49,7 +50,7 @@ jobs:
       - id: release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "${{ steps.download-artifacts.outputs.download-path }}/*"
+          artifacts: "${{ steps.download-artifacts.outputs.download-path }}/**/*.tar.zst"
           artifactErrorsFailBuild: true
           tag: v${{ inputs.version }}
           commit: master
