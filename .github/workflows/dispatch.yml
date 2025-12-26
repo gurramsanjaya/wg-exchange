@@ -10,6 +10,8 @@ on:
         required: true
         default: false
         type: boolean
+      prev-version:
+        required: false
 
 permissions:
   contents: write
@@ -54,5 +56,8 @@ jobs:
           artifactErrorsFailBuild: true
           tag: v${{ inputs.version }}
           commit: master
+          immutableCreate: true
+          generateReleaseNotes: true
+          generateReleaseNotesPreviousTag: ${{ inputs.prev-version == '' && '' || join(['v',inputs.prev-version],'') }}
           
       
