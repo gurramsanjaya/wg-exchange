@@ -1,0 +1,59 @@
+name: dispatch build
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        default: '1.0.0'
+      release:
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.24.0'
+  build:
+    runs-on: ubuntu-latest
+    needs: setup
+    strategy:
+      matrix:
+        arch: ["amd64", "arm64"]
+        os: ["linux"]
+    steps:
+      - id: build
+        run: make all
+        env:
+          ARCH: ${{ matrix.arch }}
+          OS: ${{ matrix.os }}
+          VERSION: ${{ inputs.version }}
+      - id: upload-zip-binaries
+        uses: actions/upload-artifact@v6
+        with:
+          name: wg-exchange-${{ matrix.os }}-${{ matrix.arch }}
+          compression-level: 9
+          path: build/
+  release:
+    runs-on: ubuntu-latest
+    if: ${{ inputs.release }}
+    steps:
+      - id: download-artifacts
+        uses: actions/download-artifact@v7
+      - id: release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "${{ steps.download-artifacts.outputs.download-path }}/*"
+          artifactErrorsFailBuild: true
+          tag: v${{ inputs.version }}
+          commit: master
+          
+      
