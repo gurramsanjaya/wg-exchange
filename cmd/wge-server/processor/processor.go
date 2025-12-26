@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"wg-exchange/cmd"
 	dbusclient "wg-exchange/cmd/wge-server/dbus_client"
 	"wg-exchange/cmd/wge-server/terminator"
 	"wg-exchange/models"
@@ -56,6 +57,7 @@ type Processor struct {
 	path           string
 	fLock          *flock.Flock
 	systemdManager *dbusclient.SystemdManager
+	servConf       models.ServerConfig
 }
 
 /** --- Store --- */
@@ -63,6 +65,7 @@ type Processor struct {
 func cmp(a *ecdh.PublicKey, b *ecdh.PublicKey) int {
 	tmpA := a.Bytes()
 	tmpB := b.Bytes()
+	// TODO: make this quicker
 	for i := range len(tmpA) {
 		if tmpA[i] < tmpB[i] {
 			return -1
@@ -140,6 +143,7 @@ func (s *Store) AddKey(creds models.Credentials) (*models.ClientConfig, error) {
 		Intrfc: models.Interface{
 			Dns:     s.dns,
 			Address: cIps,
+			FwMark:  cmd.DefaultFWMark,
 		},
 		Config: models.Config{
 			Peer: []models.Peer{
@@ -192,20 +196,14 @@ func NewStore(servConf models.WGEServerConf) (store *Store, err error) {
 
 	// file lock
 	proc.fLock = flock.New(path.Join(os.TempDir(), fmt.Sprintf(".wge-%s", proc.intrfc)))
-	if l, err := proc.fLock.TryLock(); err != nil {
-		return nil, err
-	} else if !l {
-		return nil, errors.New("another instance is currently running")
-	}
-	defer proc.fLock.Unlock()
 
-	// set endpoint
+	// set endpoint into store
 	if !servConf.Server.WireguardEndpoint.IsValid() {
 		return nil, errors.New("invalid wireguard endpoint")
 	}
 	store.endpoint = servConf.Server.WireguardEndpoint.String()
 
-	// set dns
+	// set dns into store
 	if len(servConf.Server.WireguardDns) == 0 {
 		return nil, errors.New("dns is null")
 	}
@@ -216,7 +214,7 @@ func NewStore(servConf models.WGEServerConf) (store *Store, err error) {
 		store.dns = append(store.dns, val.String())
 	}
 
-	// set interface ips
+	// set interface ips into store
 	if len(servConf.WgInterface.Address) == 0 {
 		return nil, errors.New("device ips is null")
 	}
@@ -238,39 +236,43 @@ func NewStore(servConf models.WGEServerConf) (store *Store, err error) {
 	// set private to conf
 	servConf.WgInterface.Priv = privTemp.Bytes()
 
-	// write server conf to file
-	tmp := models.ServerConfig{
+	// store server conf for now
+	proc.servConf = models.ServerConfig{
 		Intrfc: servConf.WgInterface,
 	}
-	tmp.Intrfc.ListenPort = int32(servConf.Server.WireguardEndpoint.Port())
-	buf, err := tmp.MarshalText()
-	if err != nil {
-		return nil, err
-	}
-
-	f, err := os.OpenFile(proc.path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o640)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	// check fstat once, just to be sure
-	if fstat, err := f.Stat(); err != nil {
-		return nil, err
-	} else if fstat.Mode()&0o640 == 0 {
-		// might happen if the file is already present but with different mode
-		return nil, errors.New("device file mode mismatch")
-	}
-
-	if _, err := fmt.Fprint(f, string(buf)); err != nil {
-		return nil, err
-	}
+	proc.servConf.Intrfc.ListenPort = int32(servConf.Server.WireguardEndpoint.Port())
 
 	terminator.HookInto(store.processor.RunProcessor)
 	return store, nil
 }
 
 /** --- Processor --- */
+
+func (p *Processor) initializeServerConf() error {
+	buf, err := p.servConf.MarshalText()
+	if err != nil {
+		return err
+	}
+
+	f, err := os.OpenFile(p.path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o640)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	// check fstat once, just to be sure
+	if fstat, err := f.Stat(); err != nil {
+		return err
+	} else if fstat.Mode()&0o640 == 0 {
+		// might happen if the file is already present but with different mode
+		return errors.New("device file mode mismatch")
+	}
+
+	if _, err := fmt.Fprint(f, string(buf)); err != nil {
+		return err
+	}
+	return nil
+}
 
 func (p *Processor) processEntry(entry procEntry) error {
 	peerConf := &models.Config{
@@ -298,16 +300,20 @@ func (p *Processor) processEntry(entry procEntry) error {
 }
 
 func (p *Processor) RunProcessor(ctx context.Context, cancel context.CancelFunc) {
-	tick := time.NewTicker(1 * time.Second)
-	defer tick.Stop()
-
 	if ok, err := p.fLock.TryLock(); err != nil || !ok {
 		// manually trigger cancel
-		log.Println("couldn't acquire file lock, stopping...")
+		log.Println("another instance is currently running...", err)
 		cancel()
 		return
 	}
 	defer p.fLock.Unlock()
+
+	// write the initial interface to conf file, we already have fLock
+	if err := p.initializeServerConf(); err != nil {
+		log.Println("failure initializing server conf file with interface...", err)
+		cancel()
+		return
+	}
 
 	// try enabling the service
 	if err := p.systemdManager.EnableAndStartService(p.intrfc); err != nil {
@@ -316,6 +322,8 @@ func (p *Processor) RunProcessor(ctx context.Context, cancel context.CancelFunc)
 		return
 	}
 
+	tick := time.NewTicker(1 * time.Second)
+	defer tick.Stop()
 	unRefreshed := 0
 	prevTime := time.Now()
 

@@ -5,7 +5,7 @@ KeepAlive = 25
 
 # This is same as wg, wg-quick notation, except in toml format, so array string in '[]' or the other toml variations
 
-# This section can be skipped if needed, it will only populate Up, Down stuff if present,
+# This section can be skipped if needed, it will only populate FwMark, Up, Down stuff if present,
 # the other details come from the server
 [Interface]
 PreUp = ["echo hello"]

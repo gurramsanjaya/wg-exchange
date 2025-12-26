@@ -5,6 +5,7 @@ import "fmt"
 const (
 	DefaultClientTomlName = "client.toml"
 	DefaultServerTomlName = "server.toml"
+	DefaultFWMark         = 51820
 )
 
 var AppVersion = "n/a"

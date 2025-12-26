@@ -1,0 +1,28 @@
+[common]
+prompt = no
+
+# rootCA stuff
+[ca_extensions]
+basicConstraints = critical, CA:true, pathlen:0
+keyUsage = critical, keyCertSign
+subjectKeyIdentifier = hash
+# issuerAltName = issuer:copy
+
+# client stuff
+[client_extensions]
+basicConstraints = critical, CA:false
+keyUsage = critical, keyEncipherment
+extendedKeyUsage = critical, serverAuth
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+# issuerAltName = issuer:copy
+
+# server stuff
+[server_extensions]
+basicConstraints = critical, CA:false
+keyUsage = critical, keyEncipherment
+extendedKeyUsage = critical, clientAuth
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+# issuerAltName = issuer:copy
+# Add static ip if present in subjectAltName
