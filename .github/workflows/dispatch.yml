@@ -6,6 +6,10 @@ on:
       version:
         required: true
         default: '1.0.0'
+      release:
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -27,7 +31,7 @@ jobs:
         os: "linux"
     steps:
       - id: build
-        runs: make all
+        run: make all
         env:
           ARCH: ${{ matrix.arch }}
           OS: ${{ matrix.os }}
@@ -38,6 +42,18 @@ jobs:
           name: wg-exchange-${{ matrix.os }}-${{ matrix.arch }}
           compression-level: 9
           path: build/
-
+  release:
+    runs-on: ubuntu-latest
+    if: ${{ inputs.release }}
+    steps:
+      - id: download-artifacts
+        uses: actions/download-artifact@v7
+      - id: release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "${{ steps.download-artifacts.outputs.download-path }}/*"
+          artifactErrorsFailBuild: true
+          tag: v${{ inputs.version }}
+          commit: master
           
       
