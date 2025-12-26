@@ -27,7 +27,8 @@ client:
 
 
 all: server client
-	$(shell sha256sum ${SERVER_PATH} ${CLIENT_PATH} > ${BUILD_PATH}/sha256sums )
-	$(shell sha512sum ${SERVER_PATH} ${CLIENT_PATH} > ${BUILD_PATH}/sha512sums )
+	sha256sum ${SERVER_PATH} ${CLIENT_PATH} > ${BUILD_PATH}/sha256sums
+	sha512sum ${SERVER_PATH} ${CLIENT_PATH} > ${BUILD_PATH}/sha512sums
+	tar --zstd -cvf wg-exchange-${OS}-${ARCH}.tar.zst -C ${BUILD_PATH} .
 
 .PHONY: server client
