@@ -5,7 +5,7 @@ DEBUG ?= false
 BUILD_PATH ?= build
 
 SERVER_PATH := ${BUILD_PATH}/server-${OS}-${ARCH}
-CLIENT_PATH := ${BUILD_PATH}/server-${OS}-${ARCH}
+CLIENT_PATH := ${BUILD_PATH}/client-${OS}-${ARCH}
 
 APPVERSION_LDF := -X 'wg-exchange/cmd.AppVersion=${APPVERSION}'
 COMMIT_HASH_LDF := -X 'wg-exchange/cmd.CommitHash=$(shell git rev-parse --short HEAD)'
