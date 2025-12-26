@@ -39,7 +39,7 @@ jobs:
         with:
           name: wg-exchange-${{ matrix.os }}-${{ matrix.arch }}
           path: wg-exchange-${{ matrix.os }}-${{ matrix.arch }}.tar.zst
-          compression: 0
+          compression-level: 0
           overwrite: true
   release:
     runs-on: ubuntu-latest
