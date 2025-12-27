@@ -38,7 +38,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: wg-exchange-${{ matrix.os }}-${{ matrix.arch }}
-          path: wg-exchange-${{ matrix.os }}-${{ matrix.arch }}.tar.zst
+          path: wg-exchange-${{ matrix.os }}-${{ matrix.arch }}-${{ inputs.version }}.tar.zst
           compression-level: 0
           overwrite: true
   release:
