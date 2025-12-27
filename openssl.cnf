@@ -8,11 +8,13 @@ keyUsage = critical, keyCertSign
 subjectKeyIdentifier = hash
 # issuerAltName = issuer:copy
 
+## Key Usage in leaf is ignored by go implementation
+
 # client stuff
 [client_extensions]
 basicConstraints = critical, CA:false
-keyUsage = critical, keyEncipherment
-extendedKeyUsage = critical, serverAuth
+keyUsage = critical, digitalSignature
+extendedKeyUsage = critical, clientAuth
 subjectKeyIdentifier = hash
 authorityKeyIdentifier = keyid:always
 # issuerAltName = issuer:copy
@@ -20,9 +22,10 @@ authorityKeyIdentifier = keyid:always
 # server stuff
 [server_extensions]
 basicConstraints = critical, CA:false
-keyUsage = critical, keyEncipherment
-extendedKeyUsage = critical, clientAuth
+keyUsage = critical, digitalSignature
+extendedKeyUsage = critical, serverAuth
 subjectKeyIdentifier = hash
 authorityKeyIdentifier = keyid:always
 # issuerAltName = issuer:copy
-# Add static ip if present in subjectAltName
+# Modify this localhost ip and replace it with static IP or DNS, its required for the clientSide auth to work
+subjectAltName = IP:127.0.0.1

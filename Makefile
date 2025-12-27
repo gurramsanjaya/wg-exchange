@@ -1,19 +1,29 @@
 ARCH ?= amd64
 OS ?= linux
-APPVERSION ?= 1.0.0
+VERSION ?= 1.0.0
 DEBUG ?= false
 BUILD_PATH ?= build
-TLS_PATH ?= tls
-ROOT_TLS_SUFFIX ?= rootCA
-ROOT_TLS_OUTPUTS := ${TLS_PATH}/${ROOT_TLS_SUFFIX}.key ${TLS_PATH}/${ROOT_TLS_SUFFIX}.pem
-X509_CA_FLAGS := -CA "${TLS_PATH}/${ROOT_TLS_SUFFIX}.pem" -CAkey "${TLS_PATH}/${ROOT_TLS_SUFFIX}.key"
 
 SERVER_PATH := ${BUILD_PATH}/server-${OS}-${ARCH}
 CLIENT_PATH := ${BUILD_PATH}/client-${OS}-${ARCH}
 
-APPVERSION_LDF := -X 'wg-exchange/cmd.AppVersion=${APPVERSION}'
+# modify these subjectNames as needed
+ROOT_SUBJ ?= "/C=JP/O=Stardust Crusaders/CN=Root CA" 
+CLIENT_SUBJ ?= "/C=JP/O=Diamond Is Unbreakable/CN=WG-Client"
+SERVER_SUBJ ?= "/C=JP/O=Steel Ball Run/CN=WG-Server"
+
+TLS_PATH ?= tls
+ROOT_TLS_SUFFIX ?= rootCA
+
+ROOT_TLS_OUTPUTS := ${TLS_PATH}/${ROOT_TLS_SUFFIX}.key ${TLS_PATH}/${ROOT_TLS_SUFFIX}.pem
+CLIENT_TLS_OUTPUTS := ${TLS_PATH}/client.key ${TLS_PATH}/client.pem
+SERVER_TLS_OUTPUTS := ${TLS_PATH}/server.key ${TLS_PATH}/server.pem
+X509_CA_FLAGS := -CA "${TLS_PATH}/${ROOT_TLS_SUFFIX}.pem" -CAkey "${TLS_PATH}/${ROOT_TLS_SUFFIX}.key"
+
+
+APPVERSION_LDF := -X 'wg-exchange/cmd.AppVersion=${VERSION}'
 COMMIT_HASH_LDF := -X 'wg-exchange/cmd.CommitHash=$(shell git rev-parse --short HEAD)'
-BUILD_TIMESTAMP_LDF := -X 'wg-exchange/cmd.BuildTimestamp=${shell date -Is -u}'
+BUILD_TIMESTAMP_LDF := -X 'wg-exchange/cmd.BuildTimestamp=$(shell date -Is -u)'
 
 ifeq (${DEBUG},true)
 	GCFLAGS = all=-N -l
@@ -23,6 +33,8 @@ endif
 
 LDFLAGS += ${APPVERSION_LDF} ${COMMIT_HASH_LDF} ${BUILD_TIMESTAMP_LDF} ${DBUS_LDF}
 
+
+.PHONY: server client binaries clean-binaries
 server:
 	GOOS=${OS} GOARCH=${ARCH} go build -o ${SERVER_PATH} -gcflags="${GCFLAGS}" -ldflags="${LDFLAGS}" cmd/wge-server/main.go
 
@@ -35,7 +47,14 @@ binaries: server client
 	sha512sum ${SERVER_PATH} ${CLIENT_PATH} > ${BUILD_PATH}/sha512sums
 	tar --zstd -cvf wg-exchange-${OS}-${ARCH}.tar.zst -C ${BUILD_PATH} .
 
-# 4 params:=file_suffix, subject, req_section, x509 params
+clean-binaries:
+	rm -rf build wg-exhcange-${OS}-${ARCH}.tar.xst
+
+
+## tls stuff here
+
+# mind the spaces in the args when calling this
+# 4 args:= file_suffix, subject, req_section, x509 params
 define gen_cert
 	openssl genpkey -algorithm ED25519 -out ${TLS_PATH}/$(1).key
 	openssl req -new -key ${TLS_PATH}/$(1).key -out ${TLS_PATH}/$(1).csr -section common -subj $(2) -config openssl.cnf
@@ -43,25 +62,33 @@ define gen_cert
 	rm -f ${TLS_PATH}/$(1).csr
 endef
 
-root-tls: 
-	@$(call gen_cert,${ROOT_TLS_SUFFIX}, "/C=JP/O=Stardust Crusaders/CN=Root CA" ,ca_extensions, -days 30 -key ${TLS_PATH}/${ROOT_TLS_SUFFIX}.key)
+
+${ROOT_TLS_OUTPUTS}:
+	@$(call gen_cert,${ROOT_TLS_SUFFIX}, ${ROOT_SUBJ}, ca_extensions, -days 30 -key ${TLS_PATH}/${ROOT_TLS_SUFFIX}.key)
+
+${CLIENT_TLS_OUTPUTS}: ${ROOT_TLS_OUTPUTS}
+	@$(call gen_cert,client, ${CLIENT_SUBJ}, client_extensions, -days 1 ${X509_CA_FLAGS} )
+	cat ${TLS_PATH}/${ROOT_TLS_SUFFIX}.pem >> ${TLS_PATH}/client.pem
+
+${SERVER_TLS_OUTPUTS}: ${ROOT_TLS_OUTPUTS}
+	@$(call gen_cert,server, ${SERVER_SUBJ}, server_extensions, -days 1 ${X509_CA_FLAGS} )
+	cat ${TLS_PATH}/${ROOT_TLS_SUFFIX}.pem >> ${TLS_PATH}/server.pem
+
+.PHONY: client-tls server-tls root-tls all-tls clean-tls
+client-tls: ${CLIENT_TLS_OUTPUTS}
+
+server-tls: ${SERVER_TLS_OUTPUTS}
+
+root-tls: ${ROOT_TLS_OUTPUTS}
 
 
-# don't trigger root-tls here
-client-tls: ${ROOT_TLS_OUTPUTS}
-	@$(call gen_cert,client, "/C=JP/O=Diamond Is Unbreakable/CN=WG-Client", client_extensions, -days 1 ${X509_CA_FLAGS} )
-	cat ${TLS_PATH}/${ROOT_TLS_SUFFIX}.pem > ${TLS_PATH}/client_bundle.pem
-	cat ${TLS_PATH}/client.pem >> ${TLS_PATH}/client_bundle.pem
-	rm -rf ${TLS_PATH}/server.pem
+all-tls: client-tls server-tls
 
-server-tls: ${ROOT_TLS_OUTPUTS}
-	@$(call gen_cert,server, "/C=JP/O=Steel Ball Run/CN=WG-Server", server_extensions, -days 1 ${X509_CA_FLAGS} )
-	cat ${TLS_PATH}/${ROOT_TLS_SUFFIX}.pem > ${TLS_PATH}/server_bundle.pem
-	cat ${TLS_PATH}/server.pem >> ${TLS_PATH}/server_bundle.pem
-	rm -f ${TLS_PATH}/server.pem
+clean-tls:
+	rm -f ${ROOT_TLS_OUTPUTS} ${SERVER_TLS_OUTPUTS} ${CLIENT_TLS_OUTPUTS}
 
-all-tls: root-tls client-tls server-tls
 
+.PHONY: clean all
 all: binaries all-tls
 
-.PHONY: server client 
+clean: clean-binaries clean-tls

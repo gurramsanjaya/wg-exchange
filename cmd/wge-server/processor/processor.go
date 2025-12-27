@@ -300,10 +300,9 @@ func (p *Processor) processEntry(entry procEntry) error {
 }
 
 func (p *Processor) RunProcessor(ctx context.Context, cancel context.CancelFunc) {
+	defer cancel()
 	if ok, err := p.fLock.TryLock(); err != nil || !ok {
-		// manually trigger cancel
 		log.Println("another instance is currently running...", err)
-		cancel()
 		return
 	}
 	defer p.fLock.Unlock()
@@ -311,14 +310,12 @@ func (p *Processor) RunProcessor(ctx context.Context, cancel context.CancelFunc)
 	// write the initial interface to conf file, we already have fLock
 	if err := p.initializeServerConf(); err != nil {
 		log.Println("failure initializing server conf file with interface...", err)
-		cancel()
 		return
 	}
 
 	// try enabling the service
 	if err := p.systemdManager.EnableAndStartService(p.intrfc); err != nil {
 		log.Println("failure enabling service", err)
-		cancel()
 		return
 	}
 
@@ -344,6 +341,7 @@ func (p *Processor) RunProcessor(ctx context.Context, cancel context.CancelFunc)
 				if err := p.systemdManager.DisableAndStopService(p.intrfc); err != nil {
 					log.Println("failure disabling service", err)
 				}
+				// manually trigger cancel, we need to complete another iteration for cleanup
 				cancel()
 			}
 			unRefreshed += 1
@@ -353,7 +351,7 @@ func (p *Processor) RunProcessor(ctx context.Context, cancel context.CancelFunc)
 		if unRefreshed > 0 && time.Since(prevTime) > time.Minute {
 			if err := p.systemdManager.RestartService(p.intrfc); err != nil {
 				log.Println("failure restarting service...", err)
-				cancel()
+				return
 			}
 			prevTime = time.Now()
 			unRefreshed = 0

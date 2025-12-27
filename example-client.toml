@@ -1,5 +1,4 @@
 [Client]
-ExchangeEndpoint = "127.0.0.1:7777"
 InterfaceNames = ["test1", "test2"]
 KeepAlive = 25
 

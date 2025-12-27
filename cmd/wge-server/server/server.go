@@ -6,7 +6,9 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/netip"
 
+	"wg-exchange/cmd"
 	"wg-exchange/cmd/wge-server/processor"
 	"wg-exchange/cmd/wge-server/terminator"
 	"wg-exchange/models"
@@ -46,8 +48,9 @@ func (s *Server) addPeer(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) StartServer(ctx context.Context, _ context.CancelFunc) {
-	go s.listen()
+func (s *Server) StartServer(ctx context.Context, cancel context.CancelFunc) {
+	go s.listen(ctx, cancel)
+
 	<-ctx.Done()
 	if err := s.server.Shutdown(ctx); err != nil {
 		log.Println("server shutdown failure")
@@ -55,26 +58,41 @@ func (s *Server) StartServer(ctx context.Context, _ context.CancelFunc) {
 	log.Println("server shut down")
 }
 
-func (s *Server) listen() {
-	if err := s.server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-		log.Println("server failure...")
+func (s *Server) listen(_ context.Context, cancel context.CancelFunc) {
+	defer cancel()
+
+	// keep the certs empty, we have already configured tls
+	if err := s.server.ListenAndServeTLS("", ""); !errors.Is(err, http.ErrServerClosed) {
+		log.Println("server failure...", err)
 	}
 }
 
-func NewServer(wgeServConf models.WGEServer, store *processor.Store) (serv *Server, err error) {
+func NewServer(wgeServConf models.WGEServer, store *processor.Store, certPath string, keyPath string, listenAddr string) (serv *Server, err error) {
+	addr, err := netip.ParseAddrPort(listenAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Println(addr.String())
+
+	config, err := cmd.GetServerConfig(certPath, keyPath)
+	if err != nil {
+		return nil, err
+	}
+
 	mux := http.NewServeMux()
 	serv = &Server{
 		store: store,
 		server: &http.Server{
-			Addr:    wgeServConf.ListenAddress.String(),
-			Handler: mux,
+			Addr:      addr.String(),
+			Handler:   mux,
+			TLSConfig: config,
+			Protocols: cmd.GetHttpProtocolsConfig(),
 		},
 	}
-	mux.HandleFunc("/", serv.addPeer)
+	mux.HandleFunc(cmd.AddPeerPath, serv.addPeer)
 
 	terminator.HookInto(serv.StartServer)
 
-	go func() {
-	}()
 	return serv, nil
 }

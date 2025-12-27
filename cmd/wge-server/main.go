@@ -16,10 +16,16 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+var (
+	confFile    = flag.String("conf", cmd.DefaultServerTomlName, "server toml conf file")
+	enableDbus  = flag.Bool("dbus", false, "enable dbus systemd management")
+	tlsCertPath = flag.String("cert", "server.pem", "tls server cert bundle file")
+	tlsKeyPath  = flag.String("key", "server.key", "tls server key file")
+	listenAddr  = flag.String("listen", "127.0.0.1:7777", "address:port to listen on")
+	version     = flag.Bool("version", false, "version")
+)
+
 func main() {
-	confFile := flag.String("conf", cmd.DefaultServerTomlName, "server toml conf file")
-	enableDbus := flag.Bool("dbus", false, "enable dbus systemd management")
-	version := flag.Bool("version", false, "version")
 	flag.Parse()
 
 	if *version {
@@ -40,7 +46,7 @@ func main() {
 		return
 	}
 
-	if _, err := server.NewServer(wgeConf.Server, store); err != nil {
+	if _, err := server.NewServer(wgeConf.Server, store, *tlsCertPath, *tlsKeyPath, *listenAddr); err != nil {
 		log.Println("server init failure...", err)
 		return
 	}

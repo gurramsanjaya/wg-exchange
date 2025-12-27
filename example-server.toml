@@ -1,12 +1,9 @@
 
 [Server]
 Ttl = 500
-ExchangeListenAddress = "127.0.0.1:7777"
 WireguardEndpoint = "127.0.0.1:51820"
 WireguardDns = ["192.168.1.1"] # This is going to be sent set to the client
 InterfaceName = "servertest"
-# TlsCertPath = "certPath" # currently unused
-# TlsKeyPath = "keyPath" # currently unused
 
 # This is same as wg, wg-quick notation, except in toml format, so array string in '[]' or the other toml variations
 [Interface]

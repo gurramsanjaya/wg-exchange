@@ -9,8 +9,9 @@ wg-exchange is a Go-based tool that manages key exchange for WireGuard VPNs. It 
 ## Features
 
 - Generate WireGuard key pairs
-- Exchange keys securely between peers through tls (not completed)
+- Exchange keys securely between peers through TLS.
 - Manage peer configurations
+- Basic TLS cert generation in Makefile.
 
 ## Installation
 
@@ -23,22 +24,49 @@ make all
 ```
 
 ## Usage
-Refer to the example tomls for the format of conf files <br>
-server:
+Refer to the example TOML files for the format of configuration files.
+
+**Server (may need `sudo` access for `/etc/wireguard` and system D-Bus):**
 ```
 Usage of ./server:
+  -cert string
+        tls server cert bundle file (default "server.pem")
   -conf string
         server toml conf file (default "server.toml")
   -dbus
         enable dbus systemd management
+  -key string
+        tls server key file (default "server.key")
+  -listen string
+        address:port to listen on (default "127.0.0.1:7777")
   -version
         version
 ```
-client:
+**Client:**
 ```
 Usage of ./client:
+  -cert string
+        tls client cert bundle file (default "client.pem")
   -conf string
         config file name (default "client.toml")
+  -endpoint string
+        server endpoint (default "https://127.0.0.1:7777")
+  -key string
+        tls client key file (default "client.key")
   -version
         version
 ```
+
+**TLS cert generation:** 
+
+Modify the openssl.cnf and the make rules as needed
+```bash
+make all-tls
+```
+
+>**Note:**  In the `openssl.cnf` file, ensure that the `subjAltName` is set correctly for the server; otherwise, client authentication may fail.  
+> - If your server has a Fully Qualified Domain Name (FQDN), use `DNS:<domain>`.  
+> - If your server does not have an FQDN, you can use its static IP with `IP:<addr>`.  
+> - If the server's IP is temporary or dynamic, you can assign a custom domain name with `DNS:<domain>`.  
+  But make sure to add this domain-to-IP mapping in your client's `/etc/hosts` file.
+

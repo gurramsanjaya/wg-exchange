@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 
@@ -20,14 +21,21 @@ import (
 )
 
 const (
-	uriFormat  = "http://%s/"
 	confFormat = "%s.conf"
 )
 
+var (
+	configFile = flag.String("conf", cmd.DefaultClientTomlName, "config file name")
+	certPath   = flag.String("cert", "client.pem", "tls client cert bundle file")
+	keyPath    = flag.String("key", "client.key", "tls client key file")
+	endpoint   = flag.String("endpoint", "https://127.0.0.1:7777", "server endpoint")
+	version    = flag.Bool("version", false, "version")
+)
+
 type clientProcessor struct {
-	uri string
-	// tlsCertPath      string
+	url              *url.URL
 	defaultInterface models.Interface
+	client           *http.Client
 
 	keepAlive int8
 }
@@ -60,47 +68,49 @@ func (c *clientProcessor) createClient(intrfcNm string) error {
 
 	go c.encode(w, &val)
 
-	if resp, err := http.DefaultClient.Post(c.uri, "application/octet-stream", r); err != nil {
-		log.Fatalln("http failure")
+	addPeerURI := c.url
+	addPeerURI.Path = cmd.AddPeerPath
+
+	resp, err := c.client.Post(addPeerURI.String(), "application/octet-stream", r)
+	if err != nil {
+		log.Println("http failure")
 		return err
-	} else {
+	}
+	defer resp.Body.Close()
+	log.Println(resp.Status)
+	if resp.StatusCode != http.StatusOK {
 
-		defer resp.Body.Close()
-		log.Println(resp.Status)
-		if resp.StatusCode != http.StatusOK {
-
-			var buf []byte
-			if _, err := resp.Body.Read(buf); err != nil {
-				return err
-			} else {
-				log.Println("body:", string(buf))
-				return errors.New("status code other than 200")
-			}
+		var buf []byte
+		if _, err := resp.Body.Read(buf); err != nil {
+			return err
 		} else {
-
-			clientConf := &models.ClientConfig{}
-			if err := gob.NewDecoder(resp.Body).Decode(&clientConf); err != nil {
-				return err
-			} else {
-				if len(clientConf.Peer) != 1 {
-					return errors.New("client has no peer")
-				}
-				clientConf.Intrfc.Priv = priv.Bytes()
-				// Set defaults as needed
-				clientConf.Intrfc.FwMark = c.defaultInterface.FwMark
-				clientConf.Intrfc.PreUp = c.defaultInterface.PreUp
-				clientConf.Intrfc.PreDown = c.defaultInterface.PreDown
-				clientConf.Intrfc.PostUp = c.defaultInterface.PostUp
-				clientConf.Intrfc.PostDown = c.defaultInterface.PostDown
-				clientConf.Peer[0].KeepAlive = c.keepAlive
-
-				if buf, err := clientConf.MarshalText(); err != nil {
-					return err
-				} else if _, err := fmt.Fprint(f, string(buf)); err != nil {
-					return err
-				}
-			}
+			log.Println("body:", string(buf))
+			return errors.New("status code other than 200")
 		}
+	}
+
+	clientConf := &models.ClientConfig{}
+	err = gob.NewDecoder(resp.Body).Decode(&clientConf)
+	if err != nil {
+		return err
+	}
+
+	if len(clientConf.Peer) != 1 {
+		return errors.New("client has no peer")
+	}
+	clientConf.Intrfc.Priv = priv.Bytes()
+	// Set defaults as needed
+	clientConf.Intrfc.FwMark = c.defaultInterface.FwMark
+	clientConf.Intrfc.PreUp = c.defaultInterface.PreUp
+	clientConf.Intrfc.PreDown = c.defaultInterface.PreDown
+	clientConf.Intrfc.PostUp = c.defaultInterface.PostUp
+	clientConf.Intrfc.PostDown = c.defaultInterface.PostDown
+	clientConf.Peer[0].KeepAlive = c.keepAlive
+
+	if buf, err := clientConf.MarshalText(); err != nil {
+		return err
+	} else if _, err := fmt.Fprint(f, string(buf)); err != nil {
+		return err
 	}
 	return nil
 }
@@ -110,9 +120,23 @@ func (c *clientProcessor) encode(w io.WriteCloser, val *models.Credentials) {
 	gob.NewEncoder(w).Encode(val)
 }
 
+func validateEndpoint(endpoint string) (url *url.URL, err error) {
+	// this validation is iffy...
+	// TODO: see if https://github.com/davidmytton/url-verifier/ is feasible
+	url, err = url.Parse(endpoint)
+	if err != nil {
+		return nil, err
+	} else if url.Scheme != "https" || url.Opaque != "" {
+		return nil, errors.New("not https scheme")
+	}
+	url.Path = ""
+	url.Fragment = ""
+	url.RawQuery = ""
+	log.Println("using endpoint:", url)
+	return
+}
+
 func main() {
-	version := flag.Bool("version", false, "version")
-	configFile := flag.String("conf", cmd.DefaultClientTomlName, "config file name")
 	flag.Parse()
 
 	if *version {
@@ -126,20 +150,33 @@ func main() {
 		return
 	}
 
-	if !wgeConf.Client.Endpoint.IsValid() {
-		log.Println("invalid endpoint")
-		return
-	}
-
 	if len(wgeConf.Client.IntrfcNames) == 0 {
 		log.Println("no client interfaces found")
 		return
 	}
 
+	url, err := validateEndpoint(*endpoint)
+	if err != nil {
+		log.Println("endpoint invalid...", err)
+		return
+	}
+
+	config, err := cmd.GetClientConfig(*certPath, *keyPath)
+	if err != nil {
+		log.Println("cert,key issues...", err)
+		return
+	}
+
 	proc := &clientProcessor{
-		uri:              fmt.Sprintf(uriFormat, wgeConf.Client.Endpoint),
+		url:              url,
 		defaultInterface: wgeConf.WgInterface,
 		keepAlive:        wgeConf.Client.KeepAlive,
+		client: &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: config,
+				Protocols:       cmd.GetHttpProtocolsConfig(),
+			},
+		},
 	}
 
 	// each should a different name so they don't overwrite
