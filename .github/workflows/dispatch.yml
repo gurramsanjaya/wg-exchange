@@ -50,7 +50,7 @@ jobs:
       - id: download-artifacts
         uses: actions/download-artifact@v7
       - id: release
-        uses: ncipollo/release-action@v1
+        uses: ncipollo/release-action@v1.20.0
         with:
           artifacts: "${{ steps.download-artifacts.outputs.download-path }}/**/*.tar.zst"
           artifactErrorsFailBuild: true
