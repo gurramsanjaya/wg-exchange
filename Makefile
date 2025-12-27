@@ -4,8 +4,8 @@ VERSION ?= 1.0.0
 DEBUG ?= false
 BUILD_PATH ?= build
 
-SERVER_PATH := ${BUILD_PATH}/server-${OS}-${ARCH}
-CLIENT_PATH := ${BUILD_PATH}/client-${OS}-${ARCH}
+SERVER_FILE := server-${OS}-${ARCH}
+CLIENT_FILE := client-${OS}-${ARCH}
 
 # modify these subjectNames as needed
 ROOT_SUBJ ?= "/C=JP/O=Stardust Crusaders/CN=Root CA" 
@@ -36,19 +36,20 @@ LDFLAGS += ${APPVERSION_LDF} ${COMMIT_HASH_LDF} ${BUILD_TIMESTAMP_LDF} ${DBUS_LD
 
 .PHONY: server client binaries clean-binaries
 server:
-	GOOS=${OS} GOARCH=${ARCH} go build -o ${SERVER_PATH} -gcflags="${GCFLAGS}" -ldflags="${LDFLAGS}" cmd/wge-server/main.go
+	GOOS=${OS} GOARCH=${ARCH} go build -o ${BUILD_PATH}/${SERVER_FILE} -gcflags="${GCFLAGS}" -ldflags="${LDFLAGS}" cmd/wge-server/main.go
 
 client:
-	GOOS=${OS} GOARCH=${ARCH} go build -o ${CLIENT_PATH} -gcflags="${GCFLAGS}" -ldflags="${LDFLAGS}" cmd/wge-client/main.go
+	GOOS=${OS} GOARCH=${ARCH} go build -o ${BUILD_PATH}/${CLIENT_FILE} -gcflags="${GCFLAGS}" -ldflags="${LDFLAGS}" cmd/wge-client/main.go
 
 
 binaries: server client
-	sha256sum ${SERVER_PATH} ${CLIENT_PATH} > ${BUILD_PATH}/sha256sums
-	sha512sum ${SERVER_PATH} ${CLIENT_PATH} > ${BUILD_PATH}/sha512sums
-	tar --zstd -cvf wg-exchange-${OS}-${ARCH}.tar.zst -C ${BUILD_PATH} .
+	cd ${BUILD_PATH} && \
+	sha256sum ${SERVER_FILE} ${CLIENT_FILE} > sha256sums && \
+	sha512sum ${SERVER_FILE} ${CLIENT_FILE} > sha512sums
+	tar --zstd -cvf wg-exchange-${OS}-${ARCH}-${VERSION}.tar.zst -C ${BUILD_PATH} .
 
 clean-binaries:
-	rm -rf build wg-exhcange-${OS}-${ARCH}.tar.xst
+	rm -rf build wg-exhcange-${OS}-${ARCH}-${VERSION}.tar.xst
 
 
 ## tls stuff here
