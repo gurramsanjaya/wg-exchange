@@ -4,8 +4,8 @@ VERSION ?= 1.0.0
 DEBUG ?= false
 BUILD_PATH ?= build
 
-SERVER_FILE := server-${OS}-${ARCH}
-CLIENT_FILE := client-${OS}-${ARCH}
+SERVER_FILE := wge-server
+CLIENT_FILE := wge-client
 
 # modify these subjectNames as needed
 ROOT_SUBJ ?= "/C=JP/O=Stardust Crusaders/CN=Root CA" 

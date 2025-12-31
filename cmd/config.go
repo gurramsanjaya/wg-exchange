@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 )
@@ -53,14 +54,17 @@ func GetCommonTlsConfig(certPath string, keyPath string) (config *tls.Config, er
 	return
 }
 
-// TODO: Refactor this nonsense, maybe take a separate CA cert bundle as input,
-// since this necessitates adding any additional unrelated/related CAs to the chain file
 func GetCACertPool(certPath string) (certPool *x509.CertPool, err error) {
 	buf, err := os.ReadFile(certPath)
 	if err != nil {
 		return nil, err
 	}
-	certPool = x509.NewCertPool()
+	// By default pull from systemCertPool, if there are any CAs in the bundle, add them too
+	certPool, err = x509.SystemCertPool()
+	if err != nil {
+		log.Println("can't access system cert pool, continuing anyway...")
+		certPool = x509.NewCertPool()
+	}
 	// modified the exisiting code for CertPool.AppendCertsFromPEM with just an extra cert.IsCA check
 	for len(buf) > 0 {
 		var block *pem.Block

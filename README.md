@@ -28,9 +28,9 @@ Refer to the example TOML files for the format of configuration files.
 
 **Server (may need `sudo` access for `/etc/wireguard` and system D-Bus):**
 ```
-Usage of ./server:
+Usage of ./wge-server:
   -cert string
-        tls server cert bundle file (default "server.pem")
+        tls server cert file, the first cert will be taken as the server cert. Any CAs in here will be considered in addition to the system CAs. (default "server.pem")
   -conf string
         server toml conf file (default "server.toml")
   -dbus
@@ -44,9 +44,9 @@ Usage of ./server:
 ```
 **Client:**
 ```
-Usage of ./client:
+Usage of ./wge-client:
   -cert string
-        tls client cert bundle file (default "client.pem")
+        tls client cert file, the first cert will be taken as the client cert. Any CAs in here will be considered in addition to the system CAs. (default "client.pem")
   -conf string
         config file name (default "client.toml")
   -endpoint string

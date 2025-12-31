@@ -19,7 +19,7 @@ import (
 var (
 	confFile    = flag.String("conf", cmd.DefaultServerTomlName, "server toml conf file")
 	enableDbus  = flag.Bool("dbus", false, "enable dbus systemd management")
-	tlsCertPath = flag.String("cert", "server.pem", "tls server cert bundle file")
+	tlsCertPath = flag.String("cert", "server.pem", "tls server cert file, the first cert will be taken as the server cert. Any CAs in here will be considered in addition to the system CAs.")
 	tlsKeyPath  = flag.String("key", "server.key", "tls server key file")
 	listenAddr  = flag.String("listen", "127.0.0.1:7777", "address:port to listen on")
 	version     = flag.Bool("version", false, "version")

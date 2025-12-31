@@ -26,7 +26,7 @@ const (
 
 var (
 	configFile = flag.String("conf", cmd.DefaultClientTomlName, "config file name")
-	certPath   = flag.String("cert", "client.pem", "tls client cert bundle file")
+	certPath   = flag.String("cert", "client.pem", "tls client cert file, the first cert will be taken as the client cert. Any CAs in here will be considered in addition to the system CAs.")
 	keyPath    = flag.String("key", "client.key", "tls client key file")
 	endpoint   = flag.String("endpoint", "https://127.0.0.1:7777", "server endpoint")
 	version    = flag.Bool("version", false, "version")
