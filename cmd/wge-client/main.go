@@ -42,7 +42,7 @@ type clientProcessor struct {
 
 func (c *clientProcessor) createClient(intrfcNm string) error {
 	// open the file before hand
-	if err := os.Mkdir(intrfcNm, 0o740); !errors.Is(err, os.ErrExist) {
+	if err := os.Mkdir(intrfcNm, 0o740); err != nil && !errors.Is(err, os.ErrExist) {
 		return err
 	}
 	fPath := path.Join(intrfcNm, fmt.Sprintf(confFormat, intrfcNm))
