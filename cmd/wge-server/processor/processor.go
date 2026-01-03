@@ -139,6 +139,7 @@ func (s *Store) AddKey(creds models.Credentials) (*models.ClientConfig, error) {
 	}
 
 	// conf to send to client
+	// send the same psk back but with server pub in the Credentials
 	c := &models.ClientConfig{
 		Intrfc: models.Interface{
 			Dns:     s.dns,
@@ -148,9 +149,12 @@ func (s *Store) AddKey(creds models.Credentials) (*models.ClientConfig, error) {
 		Config: models.Config{
 			Peer: []models.Peer{
 				{
-					Endpoint:    s.endpoint,
-					Ips:         DefaultAllowedIps[:],
-					Credentials: creds,
+					Endpoint: s.endpoint,
+					Ips:      DefaultAllowedIps[:],
+					Credentials: models.Credentials{
+						Pub: s.pub.Bytes(),
+						Psk: creds.Psk,
+					},
 				},
 			},
 		},
