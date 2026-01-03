@@ -4,7 +4,7 @@ type Key []byte
 
 type Credentials struct {
 	Pub Key `toml:"PublicKey"`
-	Psk Key `toml:"PrivateKey"`
+	Psk Key `toml:"PresharedKey"`
 }
 
 type Peer struct {
