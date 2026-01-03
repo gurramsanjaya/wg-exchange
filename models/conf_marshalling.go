@@ -76,7 +76,10 @@ func handlePrimitve(buffer *bytes.Buffer, rv reflect.Value, meta Metadata) error
 		}
 		return writeBufferString(buffer, fmt.Sprintf("%s = %s\n", meta.name, rv.String()))
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		// not skipping here if rv.Int() = 0 since persistent keep alive can be 0
+		// skipping here if rv.Int() == 0 since fwMark as 0 seems to create problems in android-wireguard
+		if rv.Int() == 0 {
+			return nil
+		}
 		return writeBufferString(buffer, fmt.Sprintf("%s = %d\n", meta.name, rv.Int()))
 	default:
 		log.Panicln("unkown primitive type")

@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -13,15 +14,14 @@ PrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 [Peer]
 Endpoint = test
 AllowedIPs = 2.2.2.2/24, 2:2:2::2/120
-PersistentKeepAlive = 0
 PublicKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-PrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+PresharedKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 
 [Peer]
 Endpoint = testing
-PersistentKeepAlive = 0
+PersistentKeepAlive = 12
 PublicKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-PrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+PresharedKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 
 `
 
@@ -31,11 +31,26 @@ func TestBasicConfMarshalling(t *testing.T) {
 		Intrfc: Interface{
 			Address: []string{"1.1.1.1", "1:1::1"},
 			FwMark:  0x0000ca6c,
+			Priv:    make([]byte, 32),
 		},
 		Config: Config{
 			Peer: []Peer{
-				{Endpoint: "test", Ips: []string{"2.2.2.2/24", "2:2:2::2/120"}},
-				{Endpoint: "testing"},
+				{
+					Endpoint: "test",
+					Ips:      []string{"2.2.2.2/24", "2:2:2::2/120"},
+					Credentials: Credentials{
+						Pub: make([]byte, 32),
+						Psk: make([]byte, 32),
+					},
+				},
+				{
+					Endpoint:  "testing",
+					KeepAlive: 12,
+					Credentials: Credentials{
+						Pub: make([]byte, 32),
+						Psk: make([]byte, 32),
+					},
+				},
 			},
 		},
 	}
@@ -46,6 +61,7 @@ func TestBasicConfMarshalling(t *testing.T) {
 	}
 
 	if string(val) != testConfVal {
+		fmt.Println(string(val))
 		t.Fatal("marshal mismatch")
 	}
 
