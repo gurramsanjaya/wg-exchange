@@ -18,10 +18,15 @@ import (
 	"wg-exchange/models"
 
 	"github.com/BurntSushi/toml"
+	"github.com/yeqown/go-qrcode/v2"
+	"github.com/yeqown/go-qrcode/writer/standard"
 )
 
 const (
-	confFormat = "%s.conf"
+	confFormat     = "%s.conf"
+	qrImageEncoder = standard.JPEG_FORMAT
+	qrFileFormat   = "%s.jpeg"
+	qrWidth        = 4
 )
 
 var (
@@ -40,12 +45,29 @@ type clientProcessor struct {
 	keepAlive int8
 }
 
-func (c *clientProcessor) createClient(intrfcNm string) error {
-	// open the file before hand
-	if err := os.Mkdir(intrfcNm, 0o740); err != nil && !errors.Is(err, os.ErrExist) {
+func (c *clientProcessor) createQR(wgClient models.WgClient, buf []byte) error {
+	// the qrencode part, the file creations/opening can fail here.
+	fPath := path.Join(wgClient.Name, fmt.Sprintf(qrFileFormat, wgClient.Name))
+	f, err := os.OpenFile(fPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o640)
+	if err != nil {
 		return err
 	}
-	fPath := path.Join(intrfcNm, fmt.Sprintf(confFormat, intrfcNm))
+	defer f.Close()
+	qrWriter := standard.NewWithWriter(f, standard.WithBuiltinImageEncoder(qrImageEncoder), standard.WithQRWidth(qrWidth))
+
+	qr, err := qrcode.New(string(buf))
+	if err != nil {
+		return err
+	}
+	return qr.Save(qrWriter)
+}
+
+func (c *clientProcessor) createClient(wgClient models.WgClient) error {
+	// make the folder
+	if err := os.Mkdir(wgClient.Name, 0o740); err != nil && !errors.Is(err, os.ErrExist) {
+		return err
+	}
+	fPath := path.Join(wgClient.Name, fmt.Sprintf(confFormat, wgClient.Name))
 	f, err := os.OpenFile(fPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o640)
 	if err != nil {
 		return err
@@ -107,10 +129,15 @@ func (c *clientProcessor) createClient(intrfcNm string) error {
 	clientConf.Intrfc.PostDown = c.defaultInterface.PostDown
 	clientConf.Peer[0].KeepAlive = c.keepAlive
 
-	if buf, err := clientConf.MarshalText(); err != nil {
+	buf, err := clientConf.MarshalText()
+	if err != nil {
 		return err
 	} else if _, err := fmt.Fprint(f, string(buf)); err != nil {
 		return err
+	}
+
+	if wgClient.GenerateQR {
+		return c.createQR(wgClient, buf)
 	}
 	return nil
 }
@@ -150,7 +177,7 @@ func main() {
 		return
 	}
 
-	if len(wgeConf.Client.IntrfcNames) == 0 {
+	if len(wgeConf.Client.Clients) == 0 {
 		log.Println("no client interfaces found")
 		return
 	}
@@ -180,12 +207,12 @@ func main() {
 	}
 
 	// each should a different name so they don't overwrite
-	for _, val := range wgeConf.Client.IntrfcNames {
-		log.Println("trying client -", val)
+	for _, val := range wgeConf.Client.Clients {
+		log.Println("trying client -", val.Name)
 		if err := proc.createClient(val); err != nil {
 			log.Println(err)
 		} else {
-			log.Println("successfully created client -", val)
+			log.Println("successfully created client -", val.Name)
 		}
 
 	}

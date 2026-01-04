@@ -8,10 +8,11 @@ wg-exchange is a Go-based tool that manages key exchange for WireGuard VPNs. It 
 
 ## Features
 
-- Generate WireGuard key pairs
+- Generate WireGuard key pairs and config
 - Exchange keys securely between peers through TLS.
 - Manage peer configurations
 - Basic TLS cert generation in Makefile.
+- Option to generate client qrEncoded jpeg
 
 ## Installation
 

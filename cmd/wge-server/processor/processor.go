@@ -264,7 +264,7 @@ func (p *Processor) initializeServerConf() error {
 	}
 	defer f.Close()
 
-	// check fstat once, just to be sure
+	// check fstat once, just to be sure, just to check if there is a mode mismatch
 	if fstat, err := f.Stat(); err != nil {
 		return err
 	} else if fstat.Mode()&0o640 == 0 {

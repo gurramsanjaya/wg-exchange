@@ -11,9 +11,14 @@ type WGEServer struct {
 	WireguardDns      []netip.Addr   `toml:"WireguardDNS"`
 }
 
+type WgClient struct {
+	Name       string `toml:"Name"`
+	GenerateQR bool   `toml:"GenerateQR"`
+}
+
 type WGEClient struct {
-	IntrfcNames []string `toml:"InterfaceNames"`
-	KeepAlive   int8     `toml:"PersistentKeepAlive"`
+	Clients   []WgClient `toml:"WgClients"`
+	KeepAlive int8       `toml:"PersistentKeepAlive"`
 }
 
 // Skipping peer stuff here

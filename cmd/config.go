@@ -24,7 +24,7 @@ var (
 )
 
 func BuildVersionOutput(appName string) string {
-	return fmt.Sprintf("%s %s (%s) built on %s\n\n", appName, AppVersion, CommitHash, BuildTimestamp)
+	return fmt.Sprintf("%s %s (%s) built on %s\n", appName, AppVersion, CommitHash, BuildTimestamp)
 }
 
 // func logOnHandshake(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {

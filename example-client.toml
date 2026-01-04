@@ -1,11 +1,15 @@
 [Client]
-InterfaceNames = ["test1", "test2"]
+WgClients = [
+    { Name = "test1", GenerateQR = true }, 
+    { Name = "test2", GenerateQR = false }
+]
 KeepAlive = 25
 
 # This is same as wg, wg-quick notation, except in toml format, so array string in '[]' or the other toml variations
 
 # This section can be skipped if needed, it will only populate FwMark, Up, Down stuff if present,
 # the other details come from the server
+# TODO: make these values client specific, instead for all clients. android-wireguard doesn't accept these values
 [Interface]
 PreUp = ["echo hello"]
 PostUp = ["echo stuff"]
