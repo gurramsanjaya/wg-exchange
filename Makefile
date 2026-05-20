@@ -49,7 +49,7 @@ binaries: server client
 	tar --zstd -cvf wg-exchange-${OS}-${ARCH}-${VERSION}.tar.zst -C ${BUILD_PATH} .
 
 clean-binaries:
-	rm -rf build wg-exhcange-${OS}-${ARCH}-${VERSION}.tar.xst
+	rm -rf build wg-exhcange-${OS}-${ARCH}-${VERSION}.tar.zst
 
 
 ## tls stuff here
