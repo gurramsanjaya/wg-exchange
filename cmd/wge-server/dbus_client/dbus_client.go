@@ -106,8 +106,14 @@ func (d *SystemdManager) EnableAndStartService(intrfc string) error {
 		// wait for 2 secs,
 		// TODO: refactor this using dbus systemd1 signals, and start this service here
 		<-time.NewTimer(2 * time.Second).C
+
+		call = d.obj.Call("org.freedesktop.systemd1.Manager.StartUnit", 0, []string{service}, modeReplace)
+		if call.Err != nil {
+			return call.Err
+		}
+		log.Println("service has been started")
 	} else {
-		log.Println("simulating enable service:", service)
+		log.Println("simulating enable & start service:", service)
 	}
 
 	return nil
