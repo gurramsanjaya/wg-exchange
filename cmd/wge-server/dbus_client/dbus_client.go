@@ -21,6 +21,12 @@ var DefaultSystemdManager = &systemdManager
 // refer: https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.systemd1.html
 
 /**
+StartUnit(in s name,
+		  in s mode,
+		  out o job);
+*/
+
+/**
 RestartUnit(in  s name,
 			in  s mode,
 			out o job);
@@ -107,7 +113,7 @@ func (d *SystemdManager) EnableAndStartService(intrfc string) error {
 		// TODO: refactor this using dbus systemd1 signals, and start this service here
 		<-time.NewTimer(2 * time.Second).C
 
-		call = d.obj.Call("org.freedesktop.systemd1.Manager.StartUnit", 0, []string{service}, modeReplace)
+		call = d.obj.Call("org.freedesktop.systemd1.Manager.StartUnit", 0, service, modeReplace)
 		if call.Err != nil {
 			return call.Err
 		}
